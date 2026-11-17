@@ -96,4 +96,8 @@ Live-tested against the real Pixelforge API: `[succeed]`, `[fail]`, `[blocked]`,
 
 ## Deployment notes
 
-Deployed on Render (free tier): web service runs `php artisan serve`-equivalent (Nginx/FrankenPHP optional), a background worker runs `queue:work`, and a cron entry runs `schedule:run` which schedules `generations:reconcile` every minute. The Pixelforge *production* key's webhook URL points at `/webhooks/pixelforge`.
+**Live demo:** https://refactored-train-j49qjx494rjh59jv-8000.app.github.dev
+
+Deployed on a GitHub Codespace (2-core, SQLite): `php artisan serve` (with `PHP_CLI_SERVER_WORKERS`), a `queue:work` daemon, and `schedule:work` which runs `generations:reconcile` every minute. The Pixelforge *production* key's webhook URL points at `/webhooks/pixelforge`. A scheduled GitHub Action pings `/up` every 10 minutes to keep the demo awake during the review window.
+
+The repo also ships a `Dockerfile` + `docker/start.sh` for a single-container deploy (Apache + worker + scheduler, `migrate --force` on boot, binds `$PORT`) — drop it on any container host with `DB_*` env vars pointed at Postgres and it works unchanged.

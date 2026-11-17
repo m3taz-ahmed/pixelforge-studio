@@ -1,0 +1,18 @@
+name: Keep codespace awake
+
+# The demo deployment runs in a GitHub Codespace whose port URL is public.
+# Codespaces stop after an idle timeout (4h here). A lightweight ping keeps
+# the demo warm during the assessment's review window. Delete this workflow
+# when the codespace is no longer needed.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping the deployed app
+        run: curl -fsS -m 30 -o /dev/null "https://refactored-train-j49qjx494rjh59jv-8000.app.github.dev/up"
