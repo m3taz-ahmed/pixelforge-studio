@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\CreditTransaction;
 use App\Models\Generation;
 use App\Models\User;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -138,8 +139,12 @@ class GenerationSync
                     'provider_cost' => (string) $providerCost,
                     'user_charge' => (string) $userCharge,
                     'image_url' => $object['image_url'] ?? null,
-                    'image_url_expires_at' => $object['image_url_expires_at'] ?? null,
-                    'completed_at' => $object['completed_at'] ?? now(),
+                    'image_url_expires_at' => isset($object['image_url_expires_at'])
+                        ? Carbon::parse($object['image_url_expires_at'])
+                        : null,
+                    'completed_at' => isset($object['completed_at'])
+                        ? Carbon::parse($object['completed_at'])
+                        : now(),
                     'error_code' => null,
                     'error_message' => null,
                 ]);
@@ -185,7 +190,9 @@ class GenerationSync
                 'status' => Generation::STATUS_FAILED,
                 'error_code' => $error['code'] ?? 'generation_failed',
                 'error_message' => $error['message'] ?? 'The provider failed this generation.',
-                'completed_at' => $object['completed_at'] ?? now(),
+                'completed_at' => isset($object['completed_at'])
+                    ? Carbon::parse($object['completed_at'])
+                    : now(),
             ]);
     }
 }
