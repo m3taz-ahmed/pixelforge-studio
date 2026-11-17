@@ -183,7 +183,7 @@ class Pricing
             return null;
         }
 
-        $rounded = BigDecimal::of($amount)->toScale(6, RoundingMode::HALF_UP);
+        $rounded = BigDecimal::of($amount === '' ? '0' : $amount)->toScale(6, RoundingMode::HALF_UP);
         $trimmed = rtrim(rtrim((string) $rounded, '0'), '.');
 
         if (! str_contains($trimmed, '.')) {
