@@ -189,10 +189,10 @@ function submit(): void {
                         <Input v-model="form.reference_images[index]" type="url" placeholder="https://example.com/style.png" />
                         <Button type="button" variant="ghost" size="sm" @click="removeReference(index)">✕</Button>
                     </div>
-                    <InputError :message="form.errors['reference_images.0']" />
+                    <InputError :message="(form.errors as Record<string, string>)['reference_images.0']" />
                 </div>
 
-                <InputError :message="form.errors.credits" />
+                <InputError :message="(form.errors as Record<string, string>).credits" />
             </form>
 
             <aside class="flex flex-col gap-4">

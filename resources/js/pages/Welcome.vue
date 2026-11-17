@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3';
+import { type SharedData } from '@/types';
+import { Head, Link, usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
+
+const page = usePage<SharedData>();
+const user = computed(() => page.props.auth?.user ?? null);
 </script>
 
 <template>
@@ -8,7 +13,7 @@ import { Head, Link } from '@inertiajs/vue3';
     <div class="flex min-h-screen flex-col bg-[#FDFDFC] text-[#1b1b18] dark:bg-[#0a0a0a] dark:text-[#EDEDEC]">
         <header class="mx-auto flex w-full max-w-5xl items-center justify-end gap-4 p-6 text-sm">
             <Link
-                v-if="$page.props.auth.user"
+                v-if="user"
                 :href="route('dashboard')"
                 class="inline-block rounded-sm border border-[#19140035] px-5 py-1.5 hover:border-[#1915014a] dark:border-[#3E3E3A] dark:hover:border-[#62605b]"
             >
@@ -33,7 +38,7 @@ import { Head, Link } from '@inertiajs/vue3';
             </p>
             <div class="flex gap-3">
                 <Link
-                    :href="$page.props.auth.user ? route('generations.create') : route('register')"
+                    :href="user ? route('generations.create') : route('register')"
                     class="rounded-md bg-[#1b1b18] px-6 py-2.5 text-sm font-medium text-white hover:bg-black dark:bg-[#EDEDEC] dark:text-[#1b1b18] dark:hover:bg-white"
                 >
                     Start generating

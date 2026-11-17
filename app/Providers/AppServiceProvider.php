@@ -20,6 +20,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // Behind a reverse proxy whose Host is rewritten (Codespaces/Render),
+        // generated URLs must come from APP_URL, not the inbound Host header.
+        if ($this->app->environment('production')) {
+            \Illuminate\Support\Facades\URL::forceRootUrl((string) config('app.url'));
+            \Illuminate\Support\Facades\URL::forceScheme('https');
+        }
     }
 }
