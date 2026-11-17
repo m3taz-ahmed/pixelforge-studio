@@ -11,6 +11,8 @@ class CreditTransaction extends Model
     use HasUuids;
 
     public const TYPE_TOPUP = 'topup';
+    public const TYPE_HOLD = 'hold';
+    public const TYPE_RELEASE = 'release';
     public const TYPE_CHARGE = 'charge';
 
     public const UPDATED_AT = null;
@@ -28,6 +30,8 @@ class CreditTransaction extends Model
     protected function casts(): array
     {
         return [
+            'amount' => 'decimal:9',
+            'balance_after' => 'decimal:9',
             'created_at' => 'datetime',
         ];
     }

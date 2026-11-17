@@ -45,6 +45,7 @@ class Generation extends Model
         'estimated_cost',
         'provider_cost',
         'user_charge',
+        'held_amount',
         'image_url',
         'image_url_expires_at',
         'error_code',
@@ -62,6 +63,7 @@ class Generation extends Model
             'estimated_cost' => 'decimal:9',
             'provider_cost' => 'decimal:9',
             'user_charge' => 'decimal:9',
+            'held_amount' => 'decimal:9',
             'image_url_expires_at' => 'datetime',
             'completed_at' => 'datetime',
         ];

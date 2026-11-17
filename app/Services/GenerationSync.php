@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\CreditTransaction;
 use App\Models\Generation;
 use App\Models\User;
+use Brick\Math\BigDecimal;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -128,9 +129,11 @@ class GenerationSync
         $userCharge = Pricing::userCharge($providerCost);
 
         DB::transaction(function () use ($generation, $object, $usage, $providerCost, $userCharge): void {
+            // Terminal statuses are excluded, not just `succeeded`: a concurrent
+            // markFailed must never be flipped back to succeeded by this claim.
             $settled = Generation::query()
                 ->whereKey($generation->id)
-                ->where('status', '!=', Generation::STATUS_SUCCEEDED)
+                ->whereNotIn('status', Generation::TERMINAL_STATUSES)
                 ->whereNull('provider_cost')
                 ->update([
                     'provider_id' => $object['id'],
@@ -159,7 +162,10 @@ class GenerationSync
                 return;
             }
 
-            $balanceAfter = $user->creditBalance()->minus($userCharge);
+            // Authorize/capture: the worst-case hold taken at submit is fully
+            // released, then the *actual* charge is taken — net effect is the
+            // user pays exactly user_charge, never the estimate.
+            $balanceAfter = $this->releaseLocked($generation->id, $user)->minus($userCharge);
 
             $user->balance = (string) $balanceAfter;
             $user->save();
@@ -182,17 +188,96 @@ class GenerationSync
     {
         $error = is_array($object['error'] ?? null) ? $object['error'] : [];
 
-        Generation::query()
-            ->whereKey($generation->id)
-            ->whereNotIn('status', Generation::TERMINAL_STATUSES)
-            ->update([
-                'provider_id' => $generation->provider_id ?? $object['id'],
-                'status' => Generation::STATUS_FAILED,
-                'error_code' => $error['code'] ?? 'generation_failed',
-                'error_message' => $error['message'] ?? 'The provider failed this generation.',
-                'completed_at' => isset($object['completed_at'])
-                    ? Carbon::parse($object['completed_at'])
-                    : now(),
-            ]);
+        DB::transaction(function () use ($generation, $object, $error): void {
+            $updated = Generation::query()
+                ->whereKey($generation->id)
+                ->whereNotIn('status', Generation::TERMINAL_STATUSES)
+                ->update([
+                    'provider_id' => $generation->provider_id ?? $object['id'],
+                    'status' => Generation::STATUS_FAILED,
+                    'error_code' => $error['code'] ?? 'generation_failed',
+                    'error_message' => $error['message'] ?? 'The provider failed this generation.',
+                    'completed_at' => isset($object['completed_at'])
+                        ? Carbon::parse($object['completed_at'])
+                        : now(),
+                ]);
+
+            if ($updated === 0) {
+                return;
+            }
+
+            $user = User::query()->whereKey($generation->user_id)->lockForUpdate()->first();
+
+            if ($user instanceof User) {
+                $this->releaseLocked($generation->id, $user);
+            }
+        });
+    }
+
+    /**
+     * Failure that happens outside the provider lifecycle — rejected submit,
+     * or a row that can never settle. Marks the generation failed if it is
+     * still open and releases its credit hold, atomically; safe to call on
+     * an already-terminal row (it becomes a no-op).
+     */
+    public function failLocally(Generation $generation, string $code, string $message): void
+    {
+        DB::transaction(function () use ($generation, $code, $message): void {
+            $updated = Generation::query()
+                ->whereKey($generation->id)
+                ->whereNotIn('status', Generation::TERMINAL_STATUSES)
+                ->update([
+                    'status' => Generation::STATUS_FAILED,
+                    'error_code' => $code,
+                    'error_message' => $message,
+                    'completed_at' => now(),
+                ]);
+
+            if ($updated === 0) {
+                return;
+            }
+
+            $user = User::query()->whereKey($generation->user_id)->lockForUpdate()->first();
+
+            if ($user instanceof User) {
+                $this->releaseLocked($generation->id, $user);
+            }
+        });
+    }
+
+    /**
+     * Give a held amount back to the user. Must be called inside a transaction
+     * after the caller's own state-transition claim has succeeded — `held_amount`
+     * is nulled on release and (generation_id, type) is unique, so the money
+     * can only ever be returned once. Returns the balance after release.
+     */
+    private function releaseLocked(string $generationId, User $user): BigDecimal
+    {
+        $balance = $user->creditBalance();
+
+        $generation = Generation::query()->whereKey($generationId)->lockForUpdate()->first();
+
+        if (! $generation instanceof Generation || $generation->held_amount === null) {
+            return $balance;
+        }
+
+        $held = BigDecimal::of((string) $generation->held_amount);
+        $generation->held_amount = null;
+        $generation->save();
+
+        $balance = $balance->plus($held);
+        $user->balance = (string) $balance;
+        $user->save();
+
+        CreditTransaction::query()->create([
+            'user_id' => $user->id,
+            'generation_id' => $generation->id,
+            'type' => CreditTransaction::TYPE_RELEASE,
+            'amount' => (string) $held,
+            'balance_after' => (string) $balance,
+            'memo' => 'Credit hold released',
+        ]);
+
+        return $balance;
     }
 }

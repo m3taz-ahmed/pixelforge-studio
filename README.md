@@ -81,7 +81,7 @@ The token model + rates come from `/v1/pricing` (cached 5 min), with a local fal
 
 ### Stretch features
 
-- **Credits**: balance on the user, fake top-ups, generation blocked when `balance < estimate.max` — all ledger writes row-locked so `balance_after` always agrees with `users.balance`.
+- **Credits**: balance on the user, fake top-ups — and **authorize/capture** billing. Submitting reserves the *worst-case* estimate (`estimate.max`) as a `hold` ledger row inside a row-locked transaction, so concurrent submits can't spend the same balance twice. On `succeeded` the hold is fully released and only the actual charge is taken; on any failure (blocked, provider failure, stale row) the hold is released untouched — the balance can never go negative and every reservation is traceable (`hold` → `release` → `charge` rows per generation).
 - **Admin report** (`/admin/usage-report`, `admin` middleware + `php artisan user:make-admin`): per-day and per-user credit spend vs provider cost, reconciled against `GET /v1/usage` with an explicit delta column.
 
 ## Tests
@@ -98,6 +98,15 @@ Live-tested against the real Pixelforge API: `[succeed]`, `[fail]`, `[blocked]`,
 
 **Live demo:** https://refactored-train-j49qjx494rjh59jv-8000.app.github.dev
 
-Deployed on a GitHub Codespace (2-core, SQLite): `php artisan serve` (with `PHP_CLI_SERVER_WORKERS`), a `queue:work` daemon, and `schedule:work` which runs `generations:reconcile` every minute. The Pixelforge *production* key's webhook URL points at `/webhooks/pixelforge`. A scheduled GitHub Action pings `/up` every 10 minutes to keep the demo awake during the review window.
+Honest caveat: the demo runs on a **free GitHub Codespace** for the assessment review window — it isn't a durable paid host. If the link is down or asleep when you visit, everything runs locally in ~5 minutes via the setup steps above, or as a single container via the shipped `Dockerfile`. The dev tunnel in front of it can briefly cache GET responses — a hard refresh fixes any stale page.
+
+Demo accounts on the deployed app (fake credits, safe to poke):
+
+| Role | Email | Password |
+|---|---|---|
+| Admin (can open `/admin/usage-report`) | `m3taz.ahmed@gmail.com` | `DemoPass123!` |
+| Regular user | `e2e@test.dev` | `TestPass123!` |
+
+Runtime: `php artisan serve` (with `PHP_CLI_SERVER_WORKERS`), a `queue:work` daemon, and `schedule:work` which runs `generations:reconcile` every minute. The Pixelforge *production* key's webhook URL points at `/webhooks/pixelforge`, and a scheduled GitHub Action pings `/up` to keep the demo awake during the review window.
 
 The repo also ships a `Dockerfile` + `docker/start.sh` for a single-container deploy (Apache + worker + scheduler, `migrate --force` on boot, binds `$PORT`) — drop it on any container host with `DB_*` env vars pointed at Postgres and it works unchanged.

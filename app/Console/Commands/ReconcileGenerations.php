@@ -25,6 +25,7 @@ class ReconcileGenerations extends Command
 
     public function handle(PixelforgeClient $client, GenerationSync $sync): int
     {
+        $this->failStale($sync);
         $this->replayUnprocessedEvents();
 
         Generation::query()
@@ -65,15 +66,37 @@ class ReconcileGenerations extends Command
             $sync->apply($object);
         } catch (PixelforgeException $e) {
             if ($e->isRejected()) {
-                $generation->update([
-                    'status' => Generation::STATUS_FAILED,
-                    'error_code' => $e->errorCode ?? 'submit_failed',
-                    'error_message' => $e->getMessage(),
-                    'completed_at' => now(),
-                ]);
+                $sync->failLocally($generation, $e->errorCode ?? 'submit_failed', $e->getMessage());
             }
             // Connection errors leave the row pending for the next sweep.
         }
+    }
+
+    /**
+     * Rows that can never settle must still release their credit hold:
+     * `pending` longer than 15 min means the provider never saw the create,
+     * `queued`/`processing` over an hour is far beyond the provider's own
+     * limits — both are failed locally so the user gets the money back.
+     */
+    private function failStale(GenerationSync $sync): void
+    {
+        Generation::query()
+            ->where('status', Generation::STATUS_PENDING)
+            ->where('created_at', '<=', now()->subMinutes(15))
+            ->limit(10)
+            ->get()
+            ->each(fn (Generation $generation) => $sync->failLocally(
+                $generation, 'submit_timeout', 'Generation could not be submitted. You were not charged.'
+            ));
+
+        Generation::query()
+            ->whereIn('status', [Generation::STATUS_QUEUED, Generation::STATUS_PROCESSING])
+            ->where('created_at', '<=', now()->subMinutes(60))
+            ->limit(10)
+            ->get()
+            ->each(fn (Generation $generation) => $sync->failLocally(
+                $generation, 'stale_generation', 'Generation did not complete in time. You were not charged.'
+            ));
     }
 
     private function refresh(PixelforgeClient $client, GenerationSync $sync, Generation $generation): void

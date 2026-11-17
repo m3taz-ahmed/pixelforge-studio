@@ -12,7 +12,7 @@ const breadcrumbs: BreadcrumbItem[] = [{ title: 'Credits', href: '/credits' }];
 
 interface Transaction {
     id: string;
-    type: 'topup' | 'charge';
+    type: 'topup' | 'hold' | 'release' | 'charge';
     amount: string;
     balance_after: string;
     memo: string | null;
@@ -26,6 +26,15 @@ defineProps<{
 
 const form = useForm<{ amount: string }>({ amount: '10' });
 const presets = ['5', '10', '20', '50'];
+
+const typeLabel: Record<Transaction['type'], string> = {
+    topup: 'Top-up',
+    hold: 'Hold',
+    release: 'Hold released',
+    charge: 'Charge',
+};
+
+const isDebit = (type: Transaction['type']) => type === 'charge' || type === 'hold';
 
 function formatDate(iso: string | null): string {
     return iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—';
@@ -85,10 +94,10 @@ function formatDate(iso: string | null): string {
                     <tbody>
                         <tr v-for="tx in transactions" :key="tx.id" class="border-b last:border-0">
                             <td class="px-4 py-2 whitespace-nowrap">{{ formatDate(tx.created_at) }}</td>
-                            <td class="px-4 py-2 capitalize">{{ tx.type }}</td>
+                            <td class="px-4 py-2 whitespace-nowrap">{{ typeLabel[tx.type] ?? tx.type }}</td>
                             <td class="text-muted-foreground max-w-40 truncate px-4 py-2">{{ tx.memo ?? '—' }}</td>
-                            <td class="px-4 py-2 text-right font-mono" :class="tx.type === 'charge' ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400'">
-                                {{ tx.type === 'charge' ? '' : '+' }}${{ tx.amount }}
+                            <td class="px-4 py-2 text-right font-mono tabular-nums" :class="isDebit(tx.type) ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400'">
+                                {{ isDebit(tx.type) ? '−' : '+' }}${{ tx.amount.replace('-', '') }}
                             </td>
                             <td class="text-muted-foreground px-4 py-2 text-right font-mono">${{ tx.balance_after }}</td>
                         </tr>
