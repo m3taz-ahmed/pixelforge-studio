@@ -1,18 +1,47 @@
 name: Keep codespace awake
 
 # The demo deployment runs in a GitHub Codespace whose port URL is public.
-# Codespaces stop after an idle timeout (4h here). A lightweight ping keeps
-# the demo warm during the assessment's review window. Delete this workflow
-# when the codespace is no longer needed.
+# Codespaces stop after an idle timeout. This workflow pings the app; if the
+# ping fails it restarts the codespace via SSH (which auto-starts it) and
+# re-launches the demo services, then verifies /up is healthy again.
+# Delete this workflow when the codespace is no longer needed.
 
 on:
   schedule:
     - cron: '*/10 * * * *'
   workflow_dispatch:
 
+env:
+  APP_URL: https://refactored-train-j49qjx494rjh59jv-8000.app.github.dev
+  CODESPACE_NAME: refactored-train-j49qjx494rjh59jv
+
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
       - name: Ping the deployed app
-        run: curl -fsS -m 30 -o /dev/null "https://refactored-train-j49qjx494rjh59jv-8000.app.github.dev/up"
+        id: ping
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' -m 30 "$APP_URL/up" || echo 000)
+          echo "app status: $code"
+          [ "$code" = "200" ]
+
+      - name: Restart codespace + services if down
+        if: failure() && secrets.CODESPACE_TOKEN != ''
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACE_TOKEN }}
+        run: |
+          gh codespace ssh --codespace "$CODESPACE_NAME" -- '
+            cd /workspaces/pixelforge-studio
+            mkdir -p storage/logs
+            pgrep -f "artisan serve" >/dev/null || (nohup php artisan serve --host=0.0.0.0 --port=8000 > storage/logs/serve.log 2>&1 &)
+            pgrep -f "artisan queue:work" >/dev/null || (nohup php artisan queue:work --daemon > storage/logs/queue.log 2>&1 &)
+            pgrep -f "artisan schedule:work" >/dev/null || (nohup php artisan schedule:work > storage/logs/schedule.log 2>&1 &)
+          '
+          for i in $(seq 1 12); do
+            sleep 10
+            code=$(curl -s -o /dev/null -w '%{http_code}' -m 30 "$APP_URL/up" || echo 000)
+            echo "attempt $i: $code"
+            [ "$code" = "200" ] && exit 0
+          done
+          exit 1
