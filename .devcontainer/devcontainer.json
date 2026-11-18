@@ -1,5 +1,6 @@
 {
   "name": "Pixelforge Studio Demo",
+  "image": "mcr.microsoft.com/devcontainers/universal:2-linux",
   "forwardPorts": [8000],
   "portsAttributes": {
     "8000": {
