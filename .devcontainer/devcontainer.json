@@ -1,0 +1,12 @@
+{
+  "name": "Pixelforge Studio Demo",
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": {
+      "label": "Pixelforge Studio",
+      "visibility": "public",
+      "onAutoForward": "notify"
+    }
+  },
+  "postStartCommand": "bash /workspaces/pixelforge-studio/.devcontainer/start-demo.sh"
+}
