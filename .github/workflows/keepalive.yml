@@ -35,7 +35,7 @@ env:
 jobs:
   keepalive:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     env:
       GH_TOKEN: ${{ secrets.CODESPACE_TOKEN }}
     steps:
@@ -104,8 +104,12 @@ jobs:
         env:
           CODESPACE_NAME: ${{ steps.cs.outputs.name }}
         run: |
-          gh codespace ssh --codespace "$CODESPACE_NAME" -- '
-            bash /workspaces/pixelforge-studio/.devcontainer/start-demo.sh
+          # </dev/null on BOTH sides: start-demo.sh spawns nohup daemons that
+          # otherwise inherit the SSH session's stdin and keep the channel
+          # open forever after the remote script exits (ssh hangs, job times
+          # out). timeout bounds any residual hang to 5 minutes.
+          timeout 300 gh codespace ssh --codespace "$CODESPACE_NAME" -- '
+            bash /workspaces/pixelforge-studio/.devcontainer/start-demo.sh </dev/null
             for i in $(seq 1 12); do
               code=$(curl -s -o /dev/null -w "%{http_code}" -m 10 http://localhost:8000/up || echo 000)
               echo "internal attempt $i: $code"
@@ -113,7 +117,7 @@ jobs:
               sleep 10
             done
             exit 1
-          '
+          ' </dev/null
 
       - name: Re-assert public port visibility + verify public URL
         if: steps.fast.outputs.healthy != 'true'
@@ -122,7 +126,7 @@ jobs:
           APP_URL: ${{ steps.cs.outputs.app_url }}
         run: |
           set -e
-          gh codespace ports visibility "${APP_PORT}:public" --codespace "$CODESPACE_NAME"
+          timeout 120 gh codespace ports visibility "${APP_PORT}:public" --codespace "$CODESPACE_NAME" </dev/null
           for i in $(seq 1 12); do
             code=$(curl -s -o /dev/null -w '%{http_code}' -m 30 "$APP_URL/up" || echo 000)
             echo "public attempt $i: $code"
